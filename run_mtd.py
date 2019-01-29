@@ -3,7 +3,7 @@ import os
 from pdbfixer import PDBFixer
 import simtk.openmm as mm
 from simtk.openmm import unit 
-from simtk.openmm.app import Topology, PDBFile, Modeller, ForceField, PDBxFile, PME, Simulation, StateDataReporter
+from simtk.openmm.app import Topology, PDBFile, Modeller, ForceField, PDBxFile, PME, Simulation, StateDataReporter, DCDReporter
 import protein_features as pf
 import metadynamics as mtd
 import matplotlib.pyplot as plot 
@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 logging.root.setLevel(logging.DEBUG)
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
-
+'''
 ## clean up the input pdb file using pdbfixer and load using Modeller
+
 # fix using pdbfixer: remove the ligand but keep the crystal waters 
 fixer = PDBFixer(pdbid='5UG9')
 fixer.findMissingResidues()
@@ -42,6 +43,7 @@ print("Done adding hydrogens.")
 # output fixed pdb
 PDBFile.writeFile(fixer.topology, fixer.positions, open('test_fixed.pdb', 'w'), keepIds=True)
 print("Done outputing the fixed pdb file.")
+'''
 
 # load pdb to Modeller
 pdb = PDBFile('5UG9_fixed.pdb')
@@ -126,7 +128,6 @@ print("Done setting tolerance.")
 simulation.minimizeEnergy(tolerance=tolerance,maxIterations=1000)
 print("Done setting energy minimization.")
 simulation.reporters.append(StateDataReporter('relax-hydrogens.log', 1000, step=True, temperature=True, potentialEnergy=True, totalEnergy=True, speed=True))
-print("Done setting reporters.")
 simulation.step(10000)
 print("Done 10000 steps of simulation.")
 positions = simulation.context.getState(getPositions=True).getPositions()
@@ -151,8 +152,19 @@ print("Done specifying simulation.")
 simulation.context.setPositions(positions)
 print("Done setting up the simulation.")
 
-# Run the simulation and plot the free energy landscape
-meta.step(simulation, 50000)
-plot.imshow(meta.getFreeEnergy())
-plot.show()
-print("Done plotting the free energy landscape.")
+# equilibration
+simulation.context.setVelocitiesToTemperature(310*unit.kelvin)
+simulation.step(100)
+print("Done 100 steps of equilibration.")
+
+# set simulation reporters
+simulation.reporters.append(DCDReporter('mtd_5UG9.dcd', 1000))
+simulation.reporters.append(StateDataReporter('mtd_5UG9.out', 10000, step=True, 
+    potentialEnergy=True, temperature=True, progress=True, remainingTime=True, 
+    speed=True, totalSteps=5000000, separator='\t'))
+
+# Run the simulation (10 ns, 5*10^6 steps) and plot the free energy landscape
+meta.step(simulation, 5000000)
+#plot.imshow(meta.getFreeEnergy())
+#plot.show()
+print("Done with 10 ns (5E+6 steps) of production run.")
