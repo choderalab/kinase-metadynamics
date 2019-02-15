@@ -6,7 +6,6 @@ from collections import namedtuple
 from functools import reduce
 import os
 import re
-from copy import deepcopy
 
 class Metadynamics(object):
     """Performs metadynamics.
@@ -95,13 +94,10 @@ class Metadynamics(object):
         self._deltaT = temperature*(biasFactor-1)
         varNames = ['cv%d' % i for i in range(len(variables))]
  
-        # peastman original code: the different energy functions are in a tabulated function
-        #self._force = mm.CustomCVForce('table(%s)' % ', '.join(varNames))
-        #for name, var in zip(varNames, variables):
-        #    self._force.addCollectiveVariable(name, var.force)
-
-        # JG: since the customCVForce has been added as group 1 in previous script (trial_metadynamics.py), just need to deepcopy the CustomCVForce object here
-        self._force = deepcopy(self.variables[0].force)
+        self._force = mm.CustomCVForce('table(%s)' % ', '.join(varNames))
+        for name, var in zip(varNames, variables):
+            #peastman original code
+            self._force.addCollectiveVariable(name, var.force)
 
         widths = [v.gridWidth for v in variables]
         mins = [v.minValue for v in variables]
@@ -115,9 +111,8 @@ class Metadynamics(object):
         else:
             raise ValueError('Metadynamics requires 1, 2, or 3 collective variables')
         self._force.addTabulatedFunction('table', self._table)
-        # peastman original code:
-        #self._force.setForceGroup(31)
-
+        self._force.setForceGroup(1)
+        system.addForce(self._force)
         self._syncWithDisk()
 
     def step(self, simulation, steps):
@@ -131,38 +126,49 @@ class Metadynamics(object):
             the number of time steps to integrate
         """
         stepsToGo = steps
+        # JG: reset the simulation steps
+        simulation.currentStep = 0
+        cv_lst = []
         while stepsToGo > 0:
-             
             nextSteps = stepsToGo
             if simulation.currentStep % self.frequency == 0:
                 nextSteps = min(nextSteps, self.frequency)
             else:
                 nextSteps = min(nextSteps, simulation.currentStep % self.frequency)
             simulation.step(nextSteps)
+ 
+            # JG: record particle positions and velocities
+            #particle_pos = simulation.context.getState(getPositions=True).getPositions()
+            #particle_vel = simulation.context.getState(getVelocities=True).getVelocities()
+
             if simulation.currentStep % self.frequency == 0:
-
-                # peastman original code (should make sure self._force has been added to the current system):
-                #position = self._force.getCollectiveVariableValues(simulation.context)
-
-                # JG: "position" is a list of CV values (which in my case only has one element, the sum of all CV components)
-                # JG: get the customCVForce from the current context
-                position = []
-                total = 0
-                for CV in simulation.context.getSystem().getForce(5).getCollectiveVariableValues(simulation.context):
-                    total += float(CV)
-                position.append(total)
+                # peastman original code (however, self._force has NOT been added to the current context):
+                position = self._force.getCollectiveVariableValues(simulation.context)
+                print("Gaussian position:")
+                print(position)
 
                 # peastman original code (refers to an old version where "groups" is a dict):
                 #energy = simulation.context.getState(getEnergy=True, groups={31}).getPotentialEnergy()
 
-                # JG: the “groups” parameter in getState() accepts 32-bit int (where the exponent is the real group number)
+                # JG: the “groups” parameter in getState() accepts 32-bit int (i.e. 2**n for group n)
                 energy = simulation.context.getState(getEnergy=True, groups=2).getPotentialEnergy()
+                print("CustomCVForce potential energy:")
+                print(energy)
                 height = self.height*np.exp(-energy/(unit.MOLAR_GAS_CONSTANT_R*self._deltaT))
+                # JG: output the bias values added each step
+                #print('Bias:',height)
                 self._addGaussian(position, height, simulation.context)
+
+                # RW: reset saved particle positions and velocities after context reinitialization in self._addGaussian
+                #print("resetting positions and velocities...")
+                #simulation.context.setPositions(particle_pos)
+                #simulation.context.setVelocities(particle_vel)
+
             if self.saveFrequency is not None and simulation.currentStep % self.saveFrequency == 0:
                 self._syncWithDisk()
             stepsToGo -= nextSteps
 
+    # JG: this function later called to plot the free energy surface
     def getFreeEnergy(self):
         """Get the free energy of the system as a function of the collective variables.
 
@@ -172,7 +178,7 @@ class Metadynamics(object):
         """
         return -((self.temperature+self._deltaT)/self._deltaT)*self._totalBias
 
-    # JG: this function was never called
+    # JG: this function was later called to plot collective variables
     def getCollectiveVariables(self, simulation):
         """Get the current values of all collective variables in a Simulation."""
         return self._force.getCollectiveVariableValues(simulation.context)
@@ -196,8 +202,8 @@ class Metadynamics(object):
             if v.periodic:
                 dist = np.min(np.array([dist, np.abs(dist-1)]), axis=0)
             axisGaussians.append(np.exp(-dist*dist*v.gridWidth/v.biasWidth))
-        # Compute their outer product.
 
+        # Compute their outer product.
         if len(self.variables) == 1:
             gaussian = axisGaussians[0]
         else:
@@ -217,8 +223,15 @@ class Metadynamics(object):
             self._table.setFunctionParameters(widths[0], widths[1], self._totalBias.flatten(), mins[0], maxs[0], mins[1], maxs[1])
         elif len(self.variables) == 3:
             self._table.setFunctionParameters(widths[0], widths[1], widths[2], self._totalBias.flatten(), mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2])
-        
-        self._force.updateParametersInContext(context)
+
+        #print("check tabulated functions added")
+        #print(self._force.getTabulatedFunction(0).getFunctionParameters()[0])
+
+        # peastman original code (causes issue):            
+        #self._force.updateParametersInContext(context)
+
+        #JG: reinitialize the context
+        #context.reinitialize()        
 
     def _syncWithDisk(self):
         """Save biases to disk, and check for updated files created by other processes."""

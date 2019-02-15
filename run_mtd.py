@@ -56,7 +56,8 @@ print("Done loading force field.")
 molecule.addSolvent(forcefield, padding=12*unit.angstrom, model='tip3p', positiveIon='Na+', negativeIon='Cl-', ionicStrength=0*unit.molar)
 print("Done adding solvent.")
 PDBxFile.writeFile(molecule.topology,molecule.positions,open("5UG9_fixed.pdbx", 'w'))
-print("Done outputing pdbx.")
+PDBFile.writeFile(molecule.topology,molecule.positions,open("5UG9_fixed_solvated.pdb", 'w'))
+print("Done outputing pdbx and solvated pdb.")
 system = forcefield.createSystem(molecule.topology, nonbondedMethod=PME, rigidWater=True, nonbondedCutoff=1*unit.nanometer)
 
 # add the custom cv force
@@ -91,9 +92,9 @@ dis_3.addBond(int(dis[3][0]), int(dis[3][1]))
 dis_4 = mm.CustomBondForce("r")
 dis_4.addBond(int(dis[4][0]), int(dis[4][1]))
 print("Done populating dihedrals and distances.")
+
 # Specify a unique CustomCVForce
-# the trial CV = dih1 + dih2 + ... + dih8 + dis1 + ... + dis5
-cv_force = mm.CustomCVForce("dih_0 + dih_1 + dih_2 + dih_3 + dih_4 + dih_5 + dih_6 + dih_7 + dis_0 + dis_1 + dis_2 + dis_3 + dis_4")
+cv_force = mm.CustomCVForce('dih_0 + dih_1 + dih_2 + dih_3 + dih_4 + dih_5 + dih_6 + dih_7 + dis_0 + dis_1 + dis_2 + dis_3 + dis_4')
 cv_force.addCollectiveVariable('dih_0', dih_0)
 cv_force.addCollectiveVariable('dih_1', dih_1)
 cv_force.addCollectiveVariable('dih_2', dih_2)
@@ -108,7 +109,7 @@ cv_force.addCollectiveVariable('dis_2', dis_2)
 cv_force.addCollectiveVariable('dis_3', dis_3)
 cv_force.addCollectiveVariable('dis_4', dis_4)
 bv = mtd.BiasVariable(cv_force, -np.pi*8, np.pi*8 + 10*5, 0.5, True)
-print("Done adding forces.")
+print("Done defining forces.")
 
 # specify the rest of the context for minimization
 integrator = mm.VerletIntegrator(0.5*unit.femtoseconds)
@@ -135,10 +136,6 @@ print("Done updating positions.")
 simulation.saveCheckpoint('state.chk')
 print("Done saving checkpoints.")
 
-# add customCVForce as force group 1 to system
-cv_force.setForceGroup(1)
-system.addForce(cv_force)
-
 # update the current context with changes in system
 simulation.context.reinitialize()
 
@@ -158,13 +155,13 @@ simulation.step(100)
 print("Done 100 steps of equilibration.")
 
 # set simulation reporters
-simulation.reporters.append(DCDReporter('mtd_5UG9.dcd', 1000))
-simulation.reporters.append(StateDataReporter('mtd_5UG9.out', 10000, step=True, 
+simulation.reporters.append(DCDReporter('mtd_5UG9.dcd', 5000))
+simulation.reporters.append(StateDataReporter('mtd_5UG9.out', 5000, step=True, 
     potentialEnergy=True, temperature=True, progress=True, remainingTime=True, 
-    speed=True, totalSteps=5000000, separator='\t'))
+    speed=True, totalSteps=50000, separator='\t'))
 
-# Run the simulation (10 ns, 5*10^6 steps) and plot the free energy landscape
-meta.step(simulation, 5000000)
+# Run small-scale simulation (10ns, 5*10^6 steps) and plot the free energy landscape
+meta.step(simulation, 50000)
 #plot.imshow(meta.getFreeEnergy())
 #plot.show()
-print("Done with 10 ns (5E+6 steps) of production run.")
+print("Done with 5*10^6 steps of production run.")
