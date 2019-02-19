@@ -3,6 +3,7 @@ import os
 from pdbfixer import PDBFixer
 import simtk.openmm as mm
 from simtk.openmm import unit 
+from simtk.openmm import version
 from simtk.openmm.app import Topology, PDBFile, Modeller, ForceField, PDBxFile, PME, Simulation, StateDataReporter, DCDReporter
 import protein_features as pf
 import metadynamics as mtd
@@ -52,6 +53,7 @@ print("Done loading pdb to Modeller.")
 # load force field
 forcefield = ForceField('amber14-all.xml', 'amber14/tip3pfb.xml')
 print("Done loading force field.")
+print("OpenMM version:", version.version)
 # prepare system
 molecule.addSolvent(forcefield, padding=12*unit.angstrom, model='tip3p', positiveIon='Na+', negativeIon='Cl-', ionicStrength=0*unit.molar)
 print("Done adding solvent.")
@@ -116,6 +118,8 @@ integrator = mm.VerletIntegrator(0.5*unit.femtoseconds)
 print("Done specifying integrator.")
 platform = mm.Platform.getPlatformByName('CUDA')
 print("Done specifying platform.")
+platform.setPropertyDefaultValue('Precision', 'single')
+print("Done setting the precision to single.")
 simulation = Simulation(molecule.topology, system, integrator, platform)
 print("Done specifying simulation.")
 simulation.context.setPositions(molecule.positions)
@@ -135,14 +139,13 @@ positions = simulation.context.getState(getPositions=True).getPositions()
 print("Done updating positions.")
 simulation.saveCheckpoint('state.chk')
 print("Done saving checkpoints.")
-
 # update the current context with changes in system
 simulation.context.reinitialize()
 
 # Set up the context for mtd simulation
 # at this step the CV and the system are separately passed to Metadynamics
-meta = mtd.Metadynamics(system, [bv], 310.0*unit.kelvin, 1000./310., 1.2*unit.kilojoules_per_mole, 500, saveFrequency=500, biasDir='./biases')
-integrator = mm.LangevinIntegrator(310*unit.kelvin, 1.0/unit.picosecond, 0.002*unit.picoseconds)
+meta = mtd.Metadynamics(system, [bv], 310.15*unit.kelvin, 6.0, 1.2*unit.kilojoules_per_mole, 500, saveFrequency=500, biasDir='./biases')
+integrator = mm.LangevinIntegrator(310.15*unit.kelvin, 1.0/unit.picosecond, 0.002*unit.picoseconds)
 print("Done specifying integrator.")
 simulation = Simulation(molecule.topology, system, integrator)
 print("Done specifying simulation.")
@@ -150,7 +153,7 @@ simulation.context.setPositions(positions)
 print("Done setting up the simulation.")
 
 # equilibration
-simulation.context.setVelocitiesToTemperature(310*unit.kelvin)
+simulation.context.setVelocitiesToTemperature(310.15*unit.kelvin)
 simulation.step(100)
 print("Done 100 steps of equilibration.")
 
@@ -158,10 +161,10 @@ print("Done 100 steps of equilibration.")
 simulation.reporters.append(DCDReporter('mtd_5UG9.dcd', 5000))
 simulation.reporters.append(StateDataReporter('mtd_5UG9.out', 5000, step=True, 
     potentialEnergy=True, temperature=True, progress=True, remainingTime=True, 
-    speed=True, totalSteps=50000, separator='\t'))
+    speed=True, totalSteps=5000000, separator='\t'))
 
 # Run small-scale simulation (10ns, 5*10^6 steps) and plot the free energy landscape
-meta.step(simulation, 50000)
+meta.step(simulation, 5000000)
 #plot.imshow(meta.getFreeEnergy())
 #plot.show()
 print("Done with 5*10^6 steps of production run.")

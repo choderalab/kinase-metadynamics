@@ -96,7 +96,6 @@ class Metadynamics(object):
  
         self._force = mm.CustomCVForce('table(%s)' % ', '.join(varNames))
         for name, var in zip(varNames, variables):
-            #peastman original code
             self._force.addCollectiveVariable(name, var.force)
 
         widths = [v.gridWidth for v in variables]
@@ -126,9 +125,8 @@ class Metadynamics(object):
             the number of time steps to integrate
         """
         stepsToGo = steps
-        # JG: reset the simulation steps
+        # JG: reset the simulation steps after minimization
         simulation.currentStep = 0
-        cv_lst = []
         while stepsToGo > 0:
             nextSteps = stepsToGo
             if simulation.currentStep % self.frequency == 0:
@@ -136,13 +134,9 @@ class Metadynamics(object):
             else:
                 nextSteps = min(nextSteps, simulation.currentStep % self.frequency)
             simulation.step(nextSteps)
- 
-            # JG: record particle positions and velocities
-            #particle_pos = simulation.context.getState(getPositions=True).getPositions()
-            #particle_vel = simulation.context.getState(getVelocities=True).getVelocities()
 
             if simulation.currentStep % self.frequency == 0:
-                # peastman original code (however, self._force has NOT been added to the current context):
+                # peastman original code:
                 position = self._force.getCollectiveVariableValues(simulation.context)
                 print("Gaussian position:")
                 print(position)
@@ -156,13 +150,8 @@ class Metadynamics(object):
                 print(energy)
                 height = self.height*np.exp(-energy/(unit.MOLAR_GAS_CONSTANT_R*self._deltaT))
                 # JG: output the bias values added each step
-                #print('Bias:',height)
+                print('Bias height:',height)
                 self._addGaussian(position, height, simulation.context)
-
-                # RW: reset saved particle positions and velocities after context reinitialization in self._addGaussian
-                #print("resetting positions and velocities...")
-                #simulation.context.setPositions(particle_pos)
-                #simulation.context.setVelocities(particle_vel)
 
             if self.saveFrequency is not None and simulation.currentStep % self.saveFrequency == 0:
                 self._syncWithDisk()
@@ -224,14 +213,7 @@ class Metadynamics(object):
         elif len(self.variables) == 3:
             self._table.setFunctionParameters(widths[0], widths[1], widths[2], self._totalBias.flatten(), mins[0], maxs[0], mins[1], maxs[1], mins[2], maxs[2])
 
-        #print("check tabulated functions added")
-        #print(self._force.getTabulatedFunction(0).getFunctionParameters()[0])
-
-        # peastman original code (causes issue):            
-        #self._force.updateParametersInContext(context)
-
-        #JG: reinitialize the context
-        #context.reinitialize()        
+        self._force.updateParametersInContext(context)
 
     def _syncWithDisk(self):
         """Save biases to disk, and check for updated files created by other processes."""
