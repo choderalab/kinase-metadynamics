@@ -181,7 +181,6 @@ class Metadynamics(object):
             x = (position[i]-v.minValue) / (v.maxValue-v.minValue)
             if v.periodic:
                 x = x % 1.0
-            
             # peastman original code: assuming len(dist) == v.gridWidth but they are not always equal due to numerical instability):
             #dist = np.abs(np.arange(0, 1, 1.0/v.gridWidth) - x) 
 

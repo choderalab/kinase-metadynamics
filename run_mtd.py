@@ -110,7 +110,7 @@ cv_force.addCollectiveVariable('dis_1', dis_1)
 cv_force.addCollectiveVariable('dis_2', dis_2)
 cv_force.addCollectiveVariable('dis_3', dis_3)
 cv_force.addCollectiveVariable('dis_4', dis_4)
-bv = mtd.BiasVariable(cv_force, -np.pi*8, np.pi*8 + 10*5, 0.5, True)
+bv = mtd.BiasVariable(cv_force, -20, 20, 0.5, True)
 print("Done defining forces.")
 
 # specify the rest of the context for minimization
@@ -144,7 +144,7 @@ simulation.context.reinitialize()
 
 # Set up the context for mtd simulation
 # at this step the CV and the system are separately passed to Metadynamics
-meta = mtd.Metadynamics(system, [bv], 310.15*unit.kelvin, 6.0, 1.2*unit.kilojoules_per_mole, 500, saveFrequency=500, biasDir='./biases')
+meta = mtd.Metadynamics(system, [bv], 310.15*unit.kelvin, 96.0, 1.2*unit.kilojoules_per_mole, 500, saveFrequency=500, biasDir='./biases')
 integrator = mm.LangevinIntegrator(310.15*unit.kelvin, 1.0/unit.picosecond, 0.002*unit.picoseconds)
 print("Done specifying integrator.")
 simulation = Simulation(molecule.topology, system, integrator)
@@ -161,10 +161,10 @@ print("Done 100 steps of equilibration.")
 simulation.reporters.append(DCDReporter('mtd_5UG9.dcd', 5000))
 simulation.reporters.append(StateDataReporter('mtd_5UG9.out', 5000, step=True, 
     potentialEnergy=True, temperature=True, progress=True, remainingTime=True, 
-    speed=True, totalSteps=5000000, separator='\t'))
+    speed=True, totalSteps=10000000, separator='\t'))
 
-# Run small-scale simulation (10ns, 5*10^6 steps) and plot the free energy landscape
-meta.step(simulation, 5000000)
+# Run small-scale simulation (20ns, 10^7 steps) and plot the free energy landscape
+meta.step(simulation, 10000000)
 #plot.imshow(meta.getFreeEnergy())
 #plot.show()
-print("Done with 5*10^6 steps of production run.")
+print("Done with 10^7 steps of production run.")
